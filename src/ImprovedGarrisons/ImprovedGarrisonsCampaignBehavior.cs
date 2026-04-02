@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Settlements;
@@ -12,7 +13,7 @@ namespace ImprovedGarrisons
     /// </summary>
     internal class ImprovedGarrisonsCampaignBehavior : CampaignBehaviorBase
     {
-        private readonly Dictionary<string, GarrisonSettings> _settingsPerFief = new Dictionary<string, GarrisonSettings>();
+        private Dictionary<string, GarrisonSettings> _settingsPerFief = new Dictionary<string, GarrisonSettings>();
 
         public override void RegisterEvents()
         {
@@ -21,7 +22,25 @@ namespace ImprovedGarrisons
 
         public override void SyncData(IDataStore dataStore)
         {
-            dataStore.SyncData("_improvedGarrisonsSettings", ref _settingsPerFief);
+            var syncState = dataStore.IsSaving
+                ? GarrisonSettingsSyncState.From(_settingsPerFief)
+                : new GarrisonSettingsSyncState();
+
+            dataStore.SyncData("_improvedGarrisonsSettlementIds", ref syncState.SettlementIds);
+            dataStore.SyncData("_improvedGarrisonsAutoRecruitEnabled", ref syncState.AutoRecruitEnabled);
+            dataStore.SyncData("_improvedGarrisonsAutoRecruitPrisonersEnabled", ref syncState.AutoRecruitPrisonersEnabled);
+            dataStore.SyncData("_improvedGarrisonsAutoTrainingEnabled", ref syncState.AutoTrainingEnabled);
+            dataStore.SyncData("_improvedGarrisonsGuardPartyEnabled", ref syncState.GuardPartyEnabled);
+            dataStore.SyncData("_improvedGarrisonsRecruitmentThresholds", ref syncState.RecruitmentThresholds);
+            dataStore.SyncData("_improvedGarrisonsGuardPartyMaxSizes", ref syncState.GuardPartyMaxSizes);
+            dataStore.SyncData("_improvedGarrisonsGuardPartyAutoRefillEnabled", ref syncState.GuardPartyAutoRefillEnabled);
+            dataStore.SyncData("_improvedGarrisonsRecruitEliteOnly", ref syncState.RecruitEliteOnly);
+            dataStore.SyncData("_improvedGarrisonsDailyRecruitBudgets", ref syncState.DailyRecruitBudgets);
+
+            if (dataStore.IsLoading)
+            {
+                _settingsPerFief = syncState.ToDictionary();
+            }
         }
 
         /// <summary>
@@ -48,7 +67,7 @@ namespace ImprovedGarrisons
             ProcessSettlement(settlement, settings);
         }
 
-        internal void ProcessSettlement(Settlement settlement, GarrisonSettings settings)
+        internal static void ProcessSettlement(Settlement settlement, GarrisonSettings settings)
         {
             if (settings.AutoRecruitEnabled)
             {
@@ -94,6 +113,97 @@ namespace ImprovedGarrisons
         {
             if (settlement?.OwnerClan == null) return false;
             return settlement.OwnerClan == Clan.PlayerClan;
+        }
+    }
+
+    internal sealed class GarrisonSettingsSyncState
+    {
+        internal List<string> SettlementIds = new List<string>();
+        internal List<int> AutoRecruitEnabled = new List<int>();
+        internal List<int> AutoRecruitPrisonersEnabled = new List<int>();
+        internal List<int> AutoTrainingEnabled = new List<int>();
+        internal List<int> GuardPartyEnabled = new List<int>();
+        internal List<int> RecruitmentThresholds = new List<int>();
+        internal List<int> GuardPartyMaxSizes = new List<int>();
+        internal List<int> GuardPartyAutoRefillEnabled = new List<int>();
+        internal List<int> RecruitEliteOnly = new List<int>();
+        internal List<int> DailyRecruitBudgets = new List<int>();
+
+        internal static GarrisonSettingsSyncState From(Dictionary<string, GarrisonSettings> settingsPerFief)
+        {
+            var state = new GarrisonSettingsSyncState();
+            if (settingsPerFief == null || settingsPerFief.Count == 0)
+            {
+                return state;
+            }
+
+            var orderedSettlementIds = new List<string>(settingsPerFief.Keys);
+            orderedSettlementIds.Sort(StringComparer.Ordinal);
+
+            foreach (var settlementId in orderedSettlementIds)
+            {
+                if (!settingsPerFief.TryGetValue(settlementId, out var settings) || settings == null)
+                {
+                    continue;
+                }
+
+                state.Add(settlementId, settings);
+            }
+
+            return state;
+        }
+
+        internal Dictionary<string, GarrisonSettings> ToDictionary()
+        {
+            var restoredSettings = new Dictionary<string, GarrisonSettings>();
+
+            for (int i = 0; i < SettlementIds.Count; i++)
+            {
+                var settlementId = SettlementIds[i];
+                if (string.IsNullOrEmpty(settlementId))
+                {
+                    continue;
+                }
+
+                restoredSettings[settlementId] = new GarrisonSettings
+                {
+                    AutoRecruitEnabled = GetValue(AutoRecruitEnabled, i, 1) != 0,
+                    AutoRecruitPrisonersEnabled = GetValue(AutoRecruitPrisonersEnabled, i, 1) != 0,
+                    AutoTrainingEnabled = GetValue(AutoTrainingEnabled, i, 1) != 0,
+                    GuardPartyEnabled = GetValue(GuardPartyEnabled, i, 0) != 0,
+                    RecruitmentThreshold = GetValue(RecruitmentThresholds, i, 100),
+                    GuardPartyMaxSize = GetValue(GuardPartyMaxSizes, i, 30),
+                    GuardPartyAutoRefill = GetValue(GuardPartyAutoRefillEnabled, i, 1) != 0,
+                    RecruitEliteOnly = GetValue(RecruitEliteOnly, i, 0) != 0,
+                    DailyRecruitBudget = GetValue(DailyRecruitBudgets, i, 0)
+                };
+            }
+
+            return restoredSettings;
+        }
+
+        private void Add(string settlementId, GarrisonSettings settings)
+        {
+            SettlementIds.Add(settlementId);
+            AutoRecruitEnabled.Add(settings.AutoRecruitEnabled ? 1 : 0);
+            AutoRecruitPrisonersEnabled.Add(settings.AutoRecruitPrisonersEnabled ? 1 : 0);
+            AutoTrainingEnabled.Add(settings.AutoTrainingEnabled ? 1 : 0);
+            GuardPartyEnabled.Add(settings.GuardPartyEnabled ? 1 : 0);
+            RecruitmentThresholds.Add(settings.RecruitmentThreshold);
+            GuardPartyMaxSizes.Add(settings.GuardPartyMaxSize);
+            GuardPartyAutoRefillEnabled.Add(settings.GuardPartyAutoRefill ? 1 : 0);
+            RecruitEliteOnly.Add(settings.RecruitEliteOnly ? 1 : 0);
+            DailyRecruitBudgets.Add(settings.DailyRecruitBudget);
+        }
+
+        private static int GetValue(List<int> values, int index, int defaultValue)
+        {
+            if (values == null || index < 0 || index >= values.Count)
+            {
+                return defaultValue;
+            }
+
+            return values[index];
         }
     }
 }

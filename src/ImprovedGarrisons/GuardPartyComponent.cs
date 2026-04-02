@@ -2,6 +2,7 @@ using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Party.PartyComponents;
 using TaleWorlds.CampaignSystem.Settlements;
+using TaleWorlds.Core;
 using TaleWorlds.Localization;
 
 namespace ImprovedGarrisons
@@ -19,13 +20,16 @@ namespace ImprovedGarrisons
             _homeSettlement = homeSettlement;
         }
 
-        public Settlement HomeSettlement => _homeSettlement;
+        public override Settlement HomeSettlement => _homeSettlement;
 
         public override Hero PartyOwner => _homeSettlement?.OwnerClan?.Leader;
 
         public override TextObject Name =>
             new TextObject($"{_homeSettlement?.Name} Guard Party");
 
-        public override Settlement HomeSettlementOfMapFaction => _homeSettlement;
+        public override Banner GetDefaultComponentBanner()
+        {
+            return _homeSettlement?.OwnerClan?.Banner;
+        }
     }
 }

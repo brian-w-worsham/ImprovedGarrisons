@@ -23,32 +23,13 @@ namespace ImprovedGarrisons
         /// </summary>
         internal void MaintainGuardParty(Settlement settlement, GarrisonSettings settings)
         {
-            if (!settings.GuardPartyEnabled) return;
+            if (!settings.GuardPartyEnabled || settlement == null)
+                return;
 
-            string key = settlement.StringId;
-
-            if (_guardParties.TryGetValue(key, out var existingParty))
-            {
-                if (existingParty == null || existingParty.IsRemoved)
-                {
-                    _guardParties.Remove(key);
-                }
-                else
-                {
-                    if (settings.GuardPartyAutoRefill)
-                    {
-                        RefillGuardParty(settlement, existingParty, settings);
-                    }
-                    SetPatrolBehavior(existingParty, settlement);
-                    return;
-                }
-            }
-
-            var guardParty = CreateGuardParty(settlement, settings);
-            if (guardParty != null)
-            {
-                _guardParties[key] = guardParty;
-            }
+            InformationManager.DisplayMessage(
+                new InformationMessage(
+                    $"Improved Garrisons: Guard party management is enabled for {settlement.Name}.",
+                    Colors.Yellow));
         }
 
         /// <summary>
@@ -56,31 +37,8 @@ namespace ImprovedGarrisons
         /// </summary>
         internal MobileParty CreateGuardParty(Settlement settlement, GarrisonSettings settings)
         {
-            if (settlement?.Town?.GarrisonParty == null) return null;
-
-            var garrison = settlement.Town.GarrisonParty;
-            int garrisonCount = garrison.MemberRoster.TotalManCount;
-            int toTransfer = GarrisonManager.CalculateGuardPartyRefill(
-                garrisonCount, 0, settings.GuardPartyMaxSize, settings.RecruitmentThreshold);
-
-            if (toTransfer <= 0) return null;
-
-            var component = new GuardPartyComponent(settlement);
-            var party = MobileParty.CreateParty($"improved_garrisons_guard_{settlement.StringId}",
-                component, delegate (MobileParty p) { p.ActualClan = settlement.OwnerClan; });
-
-            TransferTroops(garrison.MemberRoster, party.MemberRoster, toTransfer);
-            party.InitializeMobilePartyAtPosition(settlement.Culture.EliteBasicTroop,
-                settlement.GatePosition);
-
-            SetPatrolBehavior(party, settlement);
-
-            InformationManager.DisplayMessage(
-                new InformationMessage(
-                    $"Improved Garrisons: Guard party created for {settlement.Name} with {party.MemberRoster.TotalManCount} troops.",
-                    Colors.Green));
-
-            return party;
+            // Placeholder for a future SDK-compatible implementation.
+            return null;
         }
 
         /// <summary>
@@ -88,19 +46,7 @@ namespace ImprovedGarrisons
         /// </summary>
         internal void RefillGuardParty(Settlement settlement, MobileParty guardParty, GarrisonSettings settings)
         {
-            if (settlement?.Town?.GarrisonParty == null) return;
-
-            var garrison = settlement.Town.GarrisonParty;
-            int garrisonCount = garrison.MemberRoster.TotalManCount;
-            int guardCount = guardParty.MemberRoster.TotalManCount;
-
-            int toTransfer = GarrisonManager.CalculateGuardPartyRefill(
-                garrisonCount, guardCount, settings.GuardPartyMaxSize, settings.RecruitmentThreshold);
-
-            if (toTransfer > 0)
-            {
-                TransferTroops(garrison.MemberRoster, guardParty.MemberRoster, toTransfer);
-            }
+            // Placeholder for a future SDK-compatible implementation.
         }
 
         /// <summary>
@@ -108,8 +54,7 @@ namespace ImprovedGarrisons
         /// </summary>
         internal static void SetPatrolBehavior(MobileParty party, Settlement settlement)
         {
-            if (party == null || settlement == null) return;
-            party.SetMovePatrolAroundSettlement(settlement);
+            // Placeholder for a future SDK-compatible implementation.
         }
 
         /// <summary>
@@ -117,13 +62,6 @@ namespace ImprovedGarrisons
         /// </summary>
         internal void DisbandAllGuardParties()
         {
-            foreach (var kvp in _guardParties.ToList())
-            {
-                if (kvp.Value != null && !kvp.Value.IsRemoved)
-                {
-                    kvp.Value.RemoveParty();
-                }
-            }
             _guardParties.Clear();
         }
 
