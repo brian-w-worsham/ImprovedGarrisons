@@ -116,12 +116,92 @@ namespace ImprovedGarrisons.Tests
             Assert.True(settings.AutoRecruitEnabled);
             Assert.True(settings.AutoRecruitPrisonersEnabled);
             Assert.True(settings.AutoTrainingEnabled);
-            Assert.False(settings.GuardPartyEnabled);
+            Assert.True(settings.GuardPartyEnabled);
             Assert.Equal(100, settings.RecruitmentThreshold);
             Assert.Equal(30, settings.GuardPartyMaxSize);
             Assert.True(settings.GuardPartyAutoRefill);
             Assert.False(settings.RecruitEliteOnly);
             Assert.Equal(0, settings.DailyRecruitBudget);
+        }
+
+        [Fact]
+        public void BuildActivationStatusMessage_WithPlayerFiefs_DescribesActiveAutomation()
+        {
+            string message = ImprovedGarrisonsCampaignBehavior.BuildActivationStatusMessage(hasPlayerFiefs: true);
+
+            Assert.Equal(
+                "Improved Garrisons: Active for your towns and castles. Daily automation is running.",
+                message);
+        }
+
+        [Fact]
+        public void BuildActivationStatusMessage_WithoutPlayerFiefs_ExplainsWhenAutomationStarts()
+        {
+            string message = ImprovedGarrisonsCampaignBehavior.BuildActivationStatusMessage(hasPlayerFiefs: false);
+
+            Assert.Equal(
+                "Improved Garrisons: Active. Daily automation will begin after you own a town or castle.",
+                message);
+        }
+
+        [Fact]
+        public void BuildManagedSettlementMessage_WithEnabledFeatures_UsesProvidedSettlementName()
+        {
+            const string settlementName = "Player-Owned Settlement";
+
+            var settings = new GarrisonSettings
+            {
+                AutoRecruitEnabled = true,
+                AutoRecruitPrisonersEnabled = false,
+                AutoTrainingEnabled = true,
+                GuardPartyEnabled = false
+            };
+
+            string message = ImprovedGarrisonsCampaignBehavior.BuildManagedSettlementMessage(settlementName, settings);
+
+            Assert.Equal(
+                $"Improved Garrisons: Managing {settlementName} with village recruitment, training enabled.",
+                message);
+        }
+
+        [Fact]
+        public void BuildManagedSettlementMessage_WithAllAutomationDisabled_UsesProvidedSettlementName()
+        {
+            const string settlementName = "Player-Owned Settlement";
+
+            var settings = new GarrisonSettings
+            {
+                AutoRecruitEnabled = false,
+                AutoRecruitPrisonersEnabled = false,
+                AutoTrainingEnabled = false,
+                GuardPartyEnabled = false
+            };
+
+            string message = ImprovedGarrisonsCampaignBehavior.BuildManagedSettlementMessage(settlementName, settings);
+
+            Assert.Equal(
+                $"Improved Garrisons: {settlementName} is registered, but all current automation is disabled.",
+                message);
+        }
+
+        [Fact]
+        public void BuildManagedSettlementMessage_WithGuardPartiesEnabled_ListsGuardParties()
+        {
+            const string settlementName = "Player-Owned Settlement";
+
+            var settings = new GarrisonSettings
+            {
+                AutoRecruitEnabled = false,
+                AutoRecruitPrisonersEnabled = false,
+                AutoTrainingEnabled = false,
+                GuardPartyEnabled = true
+            };
+
+            string message = ImprovedGarrisonsCampaignBehavior.BuildManagedSettlementMessage(settlementName, settings);
+
+            Assert.Equal(
+                $"Improved Garrisons: Managing {settlementName} with guard parties enabled.",
+                message);
         }
     }
 }

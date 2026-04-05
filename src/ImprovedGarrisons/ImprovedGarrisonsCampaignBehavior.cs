@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.GameMenus;
+using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Library;
 
@@ -14,9 +16,14 @@ namespace ImprovedGarrisons
     internal class ImprovedGarrisonsCampaignBehavior : CampaignBehaviorBase
     {
         private Dictionary<string, GarrisonSettings> _settingsPerFief = new Dictionary<string, GarrisonSettings>();
+        private readonly HashSet<string> _announcedManagedFiefs = new HashSet<string>(StringComparer.Ordinal);
+        private bool _hasShownActivationStatus;
 
         public override void RegisterEvents()
         {
+            CampaignEvents.AfterSettlementEntered.AddNonSerializedListener(this, OnAfterSettlementEntered);
+            CampaignEvents.BeforeGameMenuOpenedEvent.AddNonSerializedListener(this, OnBeforeGameMenuOpened);
+            CampaignEvents.DailyTickEvent.AddNonSerializedListener(this, OnDailyTick);
             CampaignEvents.DailyTickSettlementEvent.AddNonSerializedListener(this, OnDailyTickSettlement);
         }
 
@@ -55,7 +62,28 @@ namespace ImprovedGarrisons
                 settings = new GarrisonSettings();
                 _settingsPerFief[key] = settings;
             }
+
+            settings.Normalize();
+
             return settings;
+        }
+
+        internal void OnDailyTick()
+        {
+            GuardPartyManager.CleanupOrphanedGuardParties();
+
+            if (_hasShownActivationStatus)
+            {
+                return;
+            }
+
+            _hasShownActivationStatus = true;
+
+            bool hasPlayerFiefs = HasAnyPlayerFiefs();
+            InformationManager.DisplayMessage(
+                new InformationMessage(
+                    BuildActivationStatusMessage(hasPlayerFiefs),
+                    hasPlayerFiefs ? Colors.Green : Colors.Yellow));
         }
 
         internal void OnDailyTickSettlement(Settlement settlement)
@@ -64,11 +92,59 @@ namespace ImprovedGarrisons
             if (!settlement.IsTown && !settlement.IsCastle) return;
 
             var settings = GetOrCreateSettings(settlement);
+            AnnounceManagedSettlement(settlement, settings);
             ProcessSettlement(settlement, settings);
+        }
+
+        internal void OnAfterSettlementEntered(MobileParty mobileParty, Settlement settlement, Hero hero)
+        {
+            if (mobileParty != MobileParty.MainParty)
+            {
+                return;
+            }
+
+            if (!IsPlayerFief(settlement) || (!settlement.IsTown && !settlement.IsCastle))
+            {
+                return;
+            }
+
+            var settings = GetOrCreateSettings(settlement);
+            AnnounceManagedSettlement(settlement, settings);
+            GuardPartyManager.MaintainGuardParty(settlement, settings);
+        }
+
+        internal void OnBeforeGameMenuOpened(MenuCallbackArgs args)
+        {
+            if (args?.MenuContext?.GameMenu == null)
+            {
+                return;
+            }
+
+            ImprovedGarrisonsMenu.TryInjectGuardSettingsOption(args.MenuContext.GameMenu);
+        }
+
+        internal void AnnounceManagedSettlement(Settlement settlement, GarrisonSettings settings)
+        {
+            if (settlement == null || string.IsNullOrEmpty(settlement.StringId))
+            {
+                return;
+            }
+
+            if (!_announcedManagedFiefs.Add(settlement.StringId))
+            {
+                return;
+            }
+
+            InformationManager.DisplayMessage(
+                new InformationMessage(
+                    BuildManagedSettlementMessage(settlement.Name?.ToString(), settings),
+                    Colors.Cyan));
         }
 
         internal static void ProcessSettlement(Settlement settlement, GarrisonSettings settings)
         {
+            settings?.Normalize();
+
             if (settings.AutoRecruitEnabled)
             {
                 int recruited = GarrisonManager.RecruitFromNearbyVillages(settlement, settings);
@@ -104,6 +180,8 @@ namespace ImprovedGarrisons
                             Colors.Cyan));
                 }
             }
+
+            GuardPartyManager.MaintainGuardParty(settlement, settings);
         }
 
         /// <summary>
@@ -113,6 +191,65 @@ namespace ImprovedGarrisons
         {
             if (settlement?.OwnerClan == null) return false;
             return settlement.OwnerClan == Clan.PlayerClan;
+        }
+
+        internal static bool HasAnyPlayerFiefs()
+        {
+            foreach (Settlement settlement in Settlement.All)
+            {
+                if (settlement != null && (settlement.IsTown || settlement.IsCastle) && IsPlayerFief(settlement))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static string BuildActivationStatusMessage(bool hasPlayerFiefs)
+        {
+            if (hasPlayerFiefs)
+            {
+                return "Improved Garrisons: Active for your towns and castles. Daily automation is running.";
+            }
+
+            return "Improved Garrisons: Active. Daily automation will begin after you own a town or castle.";
+        }
+
+        internal static string BuildManagedSettlementMessage(string settlementName, GarrisonSettings settings)
+        {
+            string resolvedSettlementName = string.IsNullOrWhiteSpace(settlementName)
+                ? "your settlement"
+                : settlementName;
+
+            var enabledFeatures = new List<string>();
+
+            if (settings?.AutoRecruitEnabled == true)
+            {
+                enabledFeatures.Add("village recruitment");
+            }
+
+            if (settings?.AutoRecruitPrisonersEnabled == true)
+            {
+                enabledFeatures.Add("prisoner recruitment");
+            }
+
+            if (settings?.AutoTrainingEnabled == true)
+            {
+                enabledFeatures.Add("training");
+            }
+
+            if (settings?.GuardPartyEnabled == true)
+            {
+                enabledFeatures.Add("guard parties");
+            }
+
+            if (enabledFeatures.Count == 0)
+            {
+                return $"Improved Garrisons: {resolvedSettlementName} is registered, but all current automation is disabled.";
+            }
+
+            return $"Improved Garrisons: Managing {resolvedSettlementName} with {string.Join(", ", enabledFeatures)} enabled.";
         }
     }
 
@@ -170,7 +307,7 @@ namespace ImprovedGarrisons
                     AutoRecruitEnabled = GetValue(AutoRecruitEnabled, i, 1) != 0,
                     AutoRecruitPrisonersEnabled = GetValue(AutoRecruitPrisonersEnabled, i, 1) != 0,
                     AutoTrainingEnabled = GetValue(AutoTrainingEnabled, i, 1) != 0,
-                    GuardPartyEnabled = GetValue(GuardPartyEnabled, i, 0) != 0,
+                    GuardPartyEnabled = GetValue(GuardPartyEnabled, i, 1) != 0,
                     RecruitmentThreshold = GetValue(RecruitmentThresholds, i, 100),
                     GuardPartyMaxSize = GetValue(GuardPartyMaxSizes, i, 30),
                     GuardPartyAutoRefill = GetValue(GuardPartyAutoRefillEnabled, i, 1) != 0,

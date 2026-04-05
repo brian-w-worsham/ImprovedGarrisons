@@ -4,6 +4,12 @@
 
 Bannerlord mod that improves castle and settlement garrison management. Adds automatic troop recruitment from nearby villages, prisoner recruitment, garrison troop training/upgrading, and guard parties that patrol and defend the player's fiefs. Uses a `CampaignBehavior` driven by the daily settlement tick with per-fief configurable settings.
 
+## Local Reference Assets
+
+- The original downloaded mod is available under `downloaded_mod/ImprovedGarrisons/`.
+- Use the original DLL, prefab XMLs, and module assets there to confirm assumptions about expected behavior before diverging on features like menus, UI flow, or settings semantics.
+- Treat `downloaded_mod` as a reference source, not as code to copy verbatim into this pared-down reimplementation.
+
 ## Tech Stack
 
 - **Language:** C# 9.0 targeting .NET Framework 4.7.2
@@ -35,8 +41,8 @@ Both the main project and the test project depend on the `GameFolder` MSBuild pr
 | `ImprovedGarrisonsCampaignBehavior.cs` | `CampaignBehaviorBase` — listens to `DailyTickSettlementEvent`, processes recruitment/training/guard parties per player-owned fief, persists per-fief settings via `SyncData` |
 | `GarrisonManager.cs` | Stateless core logic — village recruitment, prisoner recruitment, garrison training/upgrading, guard party refill calculations |
 | `GarrisonSettings.cs` | Per-fief configuration POCO — toggles for auto-recruit, prisoner recruit, training, guard parties; thresholds for garrison size and guard party size |
-| `GuardPartyComponent.cs` | Custom `PartyComponent` for guard parties — provides owner, name, and home settlement |
-| `GuardPartyManager.cs` | Guard party lifecycle — creation, refill from garrison, patrol behavior, disbanding |
+| `GuardPartyManager.cs` | Guard party lifecycle — custom party creation, refill from garrison, patrol behavior, disbanding, and orphan cleanup |
+| `ImprovedGarrisonsMenu.cs` | Settlement menu integration — exposes in-game per-fief guard-party controls from town and castle menus |
 
 ### Key Design Decisions
 
@@ -44,7 +50,8 @@ Both the main project and the test project depend on the `GameFolder` MSBuild pr
 - **Per-fief settings:** Each town and castle gets its own `GarrisonSettings` instance keyed by `Settlement.StringId`. Settings are serialized with the save game through `SyncData`.
 - **Stateless core logic:** `GarrisonManager` methods are `internal static` with no shared state, making them directly testable without the game runtime.
 - **Recruitment threshold:** Auto-recruitment stops when the garrison reaches the configured threshold (default 100). Guard party refill only draws from troops above half the threshold.
-- **Guard parties use custom PartyComponent:** `GuardPartyComponent` extends `PartyComponent` to provide Bannerlord with the party's owner, name, and home settlement while keeping the guard party distinct from clan or caravan parties.
+- **Guard parties use Bannerlord custom parties:** `GuardPartyManager` creates custom patrol parties with troop rosters pulled from the garrison, then reapplies patrol/defend behavior during daily maintenance.
+- **Guard settings are configured in settlement menus:** the lightweight in-game UI is intentionally menu-based, borrowing behavior expectations from `downloaded_mod` without recreating the full original Gauntlet stack.
 - **Player-only scope:** `IsPlayerFief` checks `settlement.OwnerClan == Clan.PlayerClan` to restrict all behavior to the player's own fiefs.
 - **User-visible feedback:** Recruitment, training, and guard party actions display colored messages via `InformationManager.DisplayMessage`.
 

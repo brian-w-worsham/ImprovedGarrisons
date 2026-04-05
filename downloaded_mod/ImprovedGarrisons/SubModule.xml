@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Module>
+    <Name value="Improved Garrisons"/>
+    <Id value="ImprovedGarrisons"/>
+    <Version value="v4.2.0.5"/>
+    <ModuleCategory value="Singleplayer"/>
+    <ModuleType value="Community" />
+
+    <SubModules>
+        <SubModule>
+            <Name value="Improved Garrisons"/>
+            <DLLName value="ImprovedGarrisons.dll"/>
+            <SubModuleClassType value="ImprovedGarrisons.Main"/>
+            <Tags>
+                <Tag key="DedicatedServerType" value="none" />
+                <Tag key="IsNoRenderModeElement" value="false" />
+            </Tags>
+        </SubModule>
+    </SubModules>
+
+    <Xmls/>
+</Module>

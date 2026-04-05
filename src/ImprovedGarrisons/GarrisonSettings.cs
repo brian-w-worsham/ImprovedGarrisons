@@ -1,3 +1,5 @@
+using System;
+
 namespace ImprovedGarrisons
 {
     /// <summary>
@@ -5,6 +7,13 @@ namespace ImprovedGarrisons
     /// </summary>
     internal class GarrisonSettings
     {
+        internal const int MinRecruitmentThreshold = 25;
+        internal const int MaxRecruitmentThreshold = 500;
+        internal const int RecruitmentThresholdStep = 25;
+        internal const int MinGuardPartyMaxSize = 10;
+        internal const int MaxGuardPartyMaxSize = 200;
+        internal const int GuardPartyMaxSizeStep = 5;
+
         /// <summary>Whether automatic recruitment is enabled for this garrison.</summary>
         public bool AutoRecruitEnabled { get; set; } = true;
 
@@ -15,7 +24,7 @@ namespace ImprovedGarrisons
         public bool AutoTrainingEnabled { get; set; } = true;
 
         /// <summary>Whether a guard party should be created for this garrison.</summary>
-        public bool GuardPartyEnabled { get; set; }
+        public bool GuardPartyEnabled { get; set; } = true;
 
         /// <summary>
         /// Maximum garrison size before auto-recruitment stops.
@@ -34,5 +43,56 @@ namespace ImprovedGarrisons
 
         /// <summary>Daily gold cost cap for auto-recruitment. 0 = unlimited.</summary>
         public int DailyRecruitBudget { get; set; }
+
+        /// <summary>
+        /// Clamps tunable numeric values into the supported in-game range.
+        /// </summary>
+        internal void Normalize()
+        {
+            RecruitmentThreshold = ClampRecruitmentThreshold(RecruitmentThreshold);
+            GuardPartyMaxSize = ClampGuardPartyMaxSize(GuardPartyMaxSize);
+        }
+
+        /// <summary>
+        /// Adjusts the recruitment threshold and clamps it to the supported range.
+        /// </summary>
+        /// <param name="delta">The amount to add to the current threshold.</param>
+        /// <returns>The normalized threshold after the change.</returns>
+        internal int AdjustRecruitmentThreshold(int delta)
+        {
+            RecruitmentThreshold = ClampRecruitmentThreshold(RecruitmentThreshold + delta);
+            return RecruitmentThreshold;
+        }
+
+        /// <summary>
+        /// Adjusts the guard party max size and clamps it to the supported range.
+        /// </summary>
+        /// <param name="delta">The amount to add to the current max size.</param>
+        /// <returns>The normalized max size after the change.</returns>
+        internal int AdjustGuardPartyMaxSize(int delta)
+        {
+            GuardPartyMaxSize = ClampGuardPartyMaxSize(GuardPartyMaxSize + delta);
+            return GuardPartyMaxSize;
+        }
+
+        /// <summary>
+        /// Clamps a recruitment threshold into the supported range.
+        /// </summary>
+        /// <param name="value">The requested threshold.</param>
+        /// <returns>A valid threshold value.</returns>
+        internal static int ClampRecruitmentThreshold(int value)
+        {
+            return Math.Max(MinRecruitmentThreshold, Math.Min(MaxRecruitmentThreshold, value));
+        }
+
+        /// <summary>
+        /// Clamps a guard party size into the supported range.
+        /// </summary>
+        /// <param name="value">The requested max size.</param>
+        /// <returns>A valid guard party size.</returns>
+        internal static int ClampGuardPartyMaxSize(int value)
+        {
+            return Math.Max(MinGuardPartyMaxSize, Math.Min(MaxGuardPartyMaxSize, value));
+        }
     }
 }

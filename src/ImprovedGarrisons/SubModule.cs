@@ -39,6 +39,7 @@ namespace ImprovedGarrisons
             {
                 var campaignStarter = (CampaignGameStarter)gameStarterObject;
                 campaignStarter.AddBehavior(new ImprovedGarrisonsCampaignBehavior());
+                ImprovedGarrisonsMenu.AddGameMenus(campaignStarter);
             }
         }
 

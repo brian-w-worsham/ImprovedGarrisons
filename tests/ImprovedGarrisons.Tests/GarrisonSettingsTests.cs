@@ -30,11 +30,11 @@ namespace ImprovedGarrisons.Tests
         }
 
         [Fact]
-        public void DefaultSettings_GuardPartyDisabled()
+        public void DefaultSettings_GuardPartyEnabled()
         {
             var settings = new GarrisonSettings();
 
-            Assert.False(settings.GuardPartyEnabled);
+            Assert.True(settings.GuardPartyEnabled);
         }
 
         [Fact]
@@ -96,6 +96,36 @@ namespace ImprovedGarrisons.Tests
             Assert.Equal(50, settings.GuardPartyMaxSize);
             Assert.True(settings.RecruitEliteOnly);
             Assert.Equal(500, settings.DailyRecruitBudget);
+        }
+
+        [Fact]
+        public void AdjustGuardPartyMaxSize_ClampsToSupportedRange()
+        {
+            var settings = new GarrisonSettings
+            {
+                GuardPartyMaxSize = 30
+            };
+
+            settings.AdjustGuardPartyMaxSize(-500);
+            Assert.Equal(GarrisonSettings.MinGuardPartyMaxSize, settings.GuardPartyMaxSize);
+
+            settings.AdjustGuardPartyMaxSize(1000);
+            Assert.Equal(GarrisonSettings.MaxGuardPartyMaxSize, settings.GuardPartyMaxSize);
+        }
+
+        [Fact]
+        public void AdjustRecruitmentThreshold_ClampsToSupportedRange()
+        {
+            var settings = new GarrisonSettings
+            {
+                RecruitmentThreshold = 100
+            };
+
+            settings.AdjustRecruitmentThreshold(-500);
+            Assert.Equal(GarrisonSettings.MinRecruitmentThreshold, settings.RecruitmentThreshold);
+
+            settings.AdjustRecruitmentThreshold(1000);
+            Assert.Equal(GarrisonSettings.MaxRecruitmentThreshold, settings.RecruitmentThreshold);
         }
     }
 }

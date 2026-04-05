@@ -11,6 +11,7 @@ Inspired by the [Improved Garrisons](https://www.nexusmods.com/mountandblade2ban
 - **Garrison Training** — Automatically upgrades garrisoned troops to higher tiers when they have enough XP
 - **Guard Parties** — Spawns guard parties from your garrison that patrol and defend your settlement's region
 - **Per-Fief Settings** — Each castle/town can be configured independently
+- **In-Game Guard Menu** — Tune guard party enablement, auto-refill, max size, and reserve threshold from the settlement menu
 - **Elite Recruitment** — Option to only recruit tier 3+ troops
 - **Configurable Threshold** — Set max garrison size before recruitment stops (default: 100)
 - **Guard Party Auto-Refill** — Guard parties automatically refill from the garrison when they take losses
@@ -25,7 +26,9 @@ The mod adds a `CampaignBehavior` that listens to the daily settlement tick. For
 3. **Upgrades** garrison troops that have accumulated enough XP
 4. **Maintains** guard parties that patrol around the settlement
 
-Guard parties are created using a custom `PartyComponent` and are set to patrol around their home settlement, defending against bandits and raiders.
+Guard parties are created as Bannerlord custom patrol parties with their own troop rosters and are set to patrol around their home settlement, defending against bandits and raiders.
+
+While visiting one of your own towns or castles, open **Improved Garrisons guard settings** from the settlement menu to change guard-party settings for that specific fief and apply them immediately.
 
 ## Prerequisites
 
@@ -45,13 +48,14 @@ ImprovedGarrisons/
 │       ├── SubModule.cs                          # Mod entry point
 │       ├── GarrisonManager.cs                    # Core recruitment/training logic
 │       ├── GarrisonSettings.cs                   # Per-fief configuration
-│       ├── GuardPartyComponent.cs                # Custom party component
 │       ├── GuardPartyManager.cs                  # Guard party lifecycle & AI
+│       ├── ImprovedGarrisonsMenu.cs              # Settlement menu UI for per-fief guard settings
 │       └── ImprovedGarrisonsCampaignBehavior.cs  # Daily tick handler
 ├── tests/
 │   └── ImprovedGarrisons.Tests/
 │       ├── ImprovedGarrisons.Tests.csproj
 │       ├── GarrisonManagerTests.cs
+│       ├── GuardPartyManagerTests.cs
 │       └── GarrisonSettingsTests.cs
 ├── ImprovedGarrisons.sln
 ├── deploy.ps1
