@@ -25,6 +25,8 @@ namespace ImprovedGarrisons
             CampaignEvents.BeforeGameMenuOpenedEvent.AddNonSerializedListener(this, OnBeforeGameMenuOpened);
             CampaignEvents.DailyTickEvent.AddNonSerializedListener(this, OnDailyTick);
             CampaignEvents.DailyTickSettlementEvent.AddNonSerializedListener(this, OnDailyTickSettlement);
+            CampaignEvents.HourlyTickPartyEvent.AddNonSerializedListener(this, OnHourlyTickParty);
+            CampaignEvents.OnPartySizeChangedEvent.AddNonSerializedListener(this, OnPartySizeChanged);
         }
 
         public override void SyncData(IDataStore dataStore)
@@ -39,7 +41,9 @@ namespace ImprovedGarrisons
             dataStore.SyncData("_improvedGarrisonsAutoTrainingEnabled", ref syncState.AutoTrainingEnabled);
             dataStore.SyncData("_improvedGarrisonsGuardPartyEnabled", ref syncState.GuardPartyEnabled);
             dataStore.SyncData("_improvedGarrisonsRecruitmentThresholds", ref syncState.RecruitmentThresholds);
+            dataStore.SyncData("_improvedGarrisonsRecruitmentThresholdOverrides", ref syncState.RecruitmentThresholdOverrides);
             dataStore.SyncData("_improvedGarrisonsGuardPartyMaxSizes", ref syncState.GuardPartyMaxSizes);
+            dataStore.SyncData("_improvedGarrisonsGuardPartyMaxSizeOverrides", ref syncState.GuardPartyMaxSizeOverrides);
             dataStore.SyncData("_improvedGarrisonsGuardPartyAutoRefillEnabled", ref syncState.GuardPartyAutoRefillEnabled);
             dataStore.SyncData("_improvedGarrisonsRecruitEliteOnly", ref syncState.RecruitEliteOnly);
             dataStore.SyncData("_improvedGarrisonsDailyRecruitBudgets", ref syncState.DailyRecruitBudgets);
@@ -121,6 +125,16 @@ namespace ImprovedGarrisons
             }
 
             ImprovedGarrisonsMenu.TryInjectGuardSettingsOption(args.MenuContext.GameMenu);
+        }
+
+        internal void OnPartySizeChanged(PartyBase party)
+        {
+            GuardPartyManager.CleanupDepletedGuardParty(party);
+        }
+
+        internal void OnHourlyTickParty(MobileParty party)
+        {
+            GuardPartyManager.CleanupDepletedGuardParty(party?.Party);
         }
 
         internal void AnnounceManagedSettlement(Settlement settlement, GarrisonSettings settings)
@@ -255,13 +269,19 @@ namespace ImprovedGarrisons
 
     internal sealed class GarrisonSettingsSyncState
     {
+        private const int LegacyDefaultRecruitmentThreshold = 100;
+        private const int LegacySecondaryDefaultRecruitmentThreshold = 200;
+        private const int LegacyDefaultGuardPartyMaxSize = 30;
+
         internal List<string> SettlementIds = new List<string>();
         internal List<int> AutoRecruitEnabled = new List<int>();
         internal List<int> AutoRecruitPrisonersEnabled = new List<int>();
         internal List<int> AutoTrainingEnabled = new List<int>();
         internal List<int> GuardPartyEnabled = new List<int>();
         internal List<int> RecruitmentThresholds = new List<int>();
+        internal List<int> RecruitmentThresholdOverrides = new List<int>();
         internal List<int> GuardPartyMaxSizes = new List<int>();
+        internal List<int> GuardPartyMaxSizeOverrides = new List<int>();
         internal List<int> GuardPartyAutoRefillEnabled = new List<int>();
         internal List<int> RecruitEliteOnly = new List<int>();
         internal List<int> DailyRecruitBudgets = new List<int>();
@@ -302,14 +322,29 @@ namespace ImprovedGarrisons
                     continue;
                 }
 
+                int guardPartyMaxSize = GetValue(GuardPartyMaxSizes, i, GarrisonSettings.AutomaticGuardPartyMaxSize);
+                bool hasSavedGuardPartyMaxSize = HasValue(GuardPartyMaxSizes, i);
+                int recruitmentThreshold = GetValue(RecruitmentThresholds, i, GarrisonSettings.AutomaticRecruitmentThreshold);
+                bool hasSavedRecruitmentThreshold = HasValue(RecruitmentThresholds, i);
+                bool hasRecruitmentThresholdOverride = HasValue(RecruitmentThresholdOverrides, i)
+                    ? GetValue(RecruitmentThresholdOverrides, i, 0) != 0
+                    : hasSavedRecruitmentThreshold && !IsLegacyDefaultRecruitmentThreshold(recruitmentThreshold);
+                bool hasGuardPartyMaxSizeOverride = HasValue(GuardPartyMaxSizeOverrides, i)
+                    ? GetValue(GuardPartyMaxSizeOverrides, i, 0) != 0
+                    : hasSavedGuardPartyMaxSize && guardPartyMaxSize != LegacyDefaultGuardPartyMaxSize;
+
                 restoredSettings[settlementId] = new GarrisonSettings
                 {
                     AutoRecruitEnabled = GetValue(AutoRecruitEnabled, i, 1) != 0,
                     AutoRecruitPrisonersEnabled = GetValue(AutoRecruitPrisonersEnabled, i, 1) != 0,
                     AutoTrainingEnabled = GetValue(AutoTrainingEnabled, i, 1) != 0,
                     GuardPartyEnabled = GetValue(GuardPartyEnabled, i, 1) != 0,
-                    RecruitmentThreshold = GetValue(RecruitmentThresholds, i, 100),
-                    GuardPartyMaxSize = GetValue(GuardPartyMaxSizes, i, 30),
+                    RecruitmentThreshold = hasRecruitmentThresholdOverride
+                        ? recruitmentThreshold
+                        : GarrisonSettings.AutomaticRecruitmentThreshold,
+                    GuardPartyMaxSize = hasGuardPartyMaxSizeOverride
+                        ? guardPartyMaxSize
+                        : GarrisonSettings.AutomaticGuardPartyMaxSize,
                     GuardPartyAutoRefill = GetValue(GuardPartyAutoRefillEnabled, i, 1) != 0,
                     RecruitEliteOnly = GetValue(RecruitEliteOnly, i, 0) != 0,
                     DailyRecruitBudget = GetValue(DailyRecruitBudgets, i, 0)
@@ -327,10 +362,24 @@ namespace ImprovedGarrisons
             AutoTrainingEnabled.Add(settings.AutoTrainingEnabled ? 1 : 0);
             GuardPartyEnabled.Add(settings.GuardPartyEnabled ? 1 : 0);
             RecruitmentThresholds.Add(settings.RecruitmentThreshold);
+            RecruitmentThresholdOverrides.Add(settings.RecruitmentThreshold > GarrisonSettings.AutomaticRecruitmentThreshold ? 1 : 0);
             GuardPartyMaxSizes.Add(settings.GuardPartyMaxSize);
+            GuardPartyMaxSizeOverrides.Add(settings.GuardPartyMaxSize > GarrisonSettings.AutomaticGuardPartyMaxSize ? 1 : 0);
             GuardPartyAutoRefillEnabled.Add(settings.GuardPartyAutoRefill ? 1 : 0);
             RecruitEliteOnly.Add(settings.RecruitEliteOnly ? 1 : 0);
             DailyRecruitBudgets.Add(settings.DailyRecruitBudget);
+        }
+
+        private static bool IsLegacyDefaultRecruitmentThreshold(int value)
+        {
+            return value == GarrisonSettings.AutomaticRecruitmentThreshold
+                || value == LegacyDefaultRecruitmentThreshold
+                || value == LegacySecondaryDefaultRecruitmentThreshold;
+        }
+
+        private static bool HasValue(List<int> values, int index)
+        {
+            return values != null && index >= 0 && index < values.Count;
         }
 
         private static int GetValue(List<int> values, int index, int defaultValue)

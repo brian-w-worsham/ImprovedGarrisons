@@ -13,7 +13,7 @@ Inspired by the [Improved Garrisons](https://www.nexusmods.com/mountandblade2ban
 - **Per-Fief Settings** — Each castle/town can be configured independently
 - **In-Game Guard Menu** — Tune guard party enablement, auto-refill, max size, and reserve threshold from the settlement menu
 - **Elite Recruitment** — Option to only recruit tier 3+ troops
-- **Configurable Threshold** — Set max garrison size before recruitment stops (default: 100)
+- **Configurable Threshold** — Uses each settlement's current garrison capacity by default, with per-fief overrides available from the guard menu
 - **Guard Party Auto-Refill** — Guard parties automatically refill from the garrison when they take losses
 - **Save-Compatible** — Settings are persisted with your save game
 

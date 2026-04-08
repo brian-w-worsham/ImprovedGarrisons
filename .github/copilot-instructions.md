@@ -49,7 +49,7 @@ Both the main project and the test project depend on the `GameFolder` MSBuild pr
 - **Daily tick driven:** All garrison management runs once per day via `CampaignEvents.DailyTickSettlementEvent`, keeping performance impact low.
 - **Per-fief settings:** Each town and castle gets its own `GarrisonSettings` instance keyed by `Settlement.StringId`. Settings are serialized with the save game through `SyncData`.
 - **Stateless core logic:** `GarrisonManager` methods are `internal static` with no shared state, making them directly testable without the game runtime.
-- **Recruitment threshold:** Auto-recruitment stops when the garrison reaches the configured threshold (default 100). Guard party refill only draws from troops above half the threshold.
+- **Recruitment threshold:** Auto-recruitment stops when the garrison reaches the configured threshold. By default that threshold automatically matches the settlement's current garrison party size limit, and guard party refill only draws from troops above half the effective threshold.
 - **Guard parties use Bannerlord custom parties:** `GuardPartyManager` creates custom patrol parties with troop rosters pulled from the garrison, then reapplies patrol/defend behavior during daily maintenance.
 - **Guard settings are configured in settlement menus:** the lightweight in-game UI is intentionally menu-based, borrowing behavior expectations from `downloaded_mod` without recreating the full original Gauntlet stack.
 - **Player-only scope:** `IsPlayerFief` checks `settlement.OwnerClan == Clan.PlayerClan` to restrict all behavior to the player's own fiefs.

@@ -30,7 +30,8 @@ namespace ImprovedGarrisons
             if (garrison == null) return 0;
 
             int currentCount = garrison.MemberRoster.TotalManCount;
-            int remaining = settings.RecruitmentThreshold - currentCount;
+            int recruitmentThreshold = settings.ResolveRecruitmentThreshold(settlement);
+            int remaining = recruitmentThreshold - currentCount;
             if (remaining <= 0) return 0;
 
             int totalRecruited = 0;
@@ -76,7 +77,8 @@ namespace ImprovedGarrisons
             if (garrison == null) return 0;
 
             int currentCount = garrison.MemberRoster.TotalManCount;
-            int remaining = settings.RecruitmentThreshold - currentCount;
+            int recruitmentThreshold = settings.ResolveRecruitmentThreshold(settlement);
+            int remaining = recruitmentThreshold - currentCount;
             if (remaining <= 0) return 0;
 
             var prisonRoster = settlement.Party?.PrisonRoster;

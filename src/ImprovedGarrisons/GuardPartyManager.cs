@@ -73,11 +73,14 @@ namespace ImprovedGarrisons
             }
 
             var garrison = settlement.Town.GarrisonParty;
+            int garrisonCount = garrison.MemberRoster.TotalManCount;
+            int guardPartyMaxSize = settings.ResolveGuardPartyMaxSize(garrisonCount);
+            int recruitmentThreshold = settings.ResolveRecruitmentThreshold(settlement);
             int troopsToTransfer = GarrisonManager.CalculateGuardPartyRefill(
-                garrison.MemberRoster.TotalManCount,
+                garrisonCount,
                 guardPartyCount: 0,
-                settings.GuardPartyMaxSize,
-                settings.RecruitmentThreshold);
+                guardPartyMaxSize,
+                recruitmentThreshold);
 
             if (troopsToTransfer <= 0)
             {
@@ -161,11 +164,14 @@ namespace ImprovedGarrisons
             }
 
             var garrisonRoster = settlement.Town.GarrisonParty.MemberRoster;
+            int totalDefensiveTroops = garrisonRoster.TotalManCount + guardParty.MemberRoster.TotalManCount;
+            int guardPartyMaxSize = settings.ResolveGuardPartyMaxSize(totalDefensiveTroops);
+            int recruitmentThreshold = settings.ResolveRecruitmentThreshold(settlement);
             int troopsToTransfer = GarrisonManager.CalculateGuardPartyRefill(
                 garrisonRoster.TotalManCount,
                 guardParty.MemberRoster.TotalManCount,
-                settings.GuardPartyMaxSize,
-                settings.RecruitmentThreshold);
+                guardPartyMaxSize,
+                recruitmentThreshold);
 
             if (troopsToTransfer <= 0)
             {
@@ -202,6 +208,12 @@ namespace ImprovedGarrisons
         {
             foreach (var guardParty in MobileParty.AllCustomParties.Where(IsManagedGuardParty).ToList())
             {
+                if (ShouldCleanupDepletedGuardParty(guardParty))
+                {
+                    DisbandGuardParty(guardParty.HomeSettlement, guardParty, returnTroopsToGarrison: false, showMessage: false);
+                    continue;
+                }
+
                 Settlement homeSettlement = guardParty.HomeSettlement;
                 if (homeSettlement == null || (!homeSettlement.IsTown && !homeSettlement.IsCastle))
                 {
@@ -269,12 +281,69 @@ namespace ImprovedGarrisons
         internal static int GetActiveGuardPartySize(Settlement settlement)
         {
             var guardParty = FindGuardParty(settlement);
-            if (guardParty?.IsActive != true || guardParty.MemberRoster == null)
+            if (!HasUsableGuardTroops(guardParty))
             {
                 return 0;
             }
 
-            return guardParty.MemberRoster.TotalManCount;
+            return guardParty.Party.NumberOfHealthyMembers;
+        }
+
+        /// <summary>
+        /// Disbands a managed guard party immediately when it has no remaining troops.
+        /// </summary>
+        /// <param name="partyBase">The party whose current size changed.</param>
+        /// <returns><c>true</c> when an empty managed guard party was disbanded; otherwise <c>false</c>.</returns>
+        internal static bool CleanupDepletedGuardParty(PartyBase partyBase)
+        {
+            MobileParty mobileParty = partyBase?.MobileParty;
+            if (!ShouldCleanupDepletedGuardParty(mobileParty))
+            {
+                return false;
+            }
+
+            Settlement homeSettlement = mobileParty.HomeSettlement;
+            DisbandGuardParty(homeSettlement, mobileParty, returnTroopsToGarrison: false, showMessage: false);
+            return true;
+        }
+
+        /// <summary>
+        /// Determines whether a mobile party should be removed because it is a managed
+        /// guard party with no remaining troops.
+        /// </summary>
+        /// <param name="party">The mobile party to inspect.</param>
+        /// <returns><c>true</c> when the party should be cleaned up; otherwise <c>false</c>.</returns>
+        internal static bool ShouldCleanupDepletedGuardParty(MobileParty party)
+        {
+            if (party?.MemberRoster == null || !IsManagedGuardParty(party))
+            {
+                return false;
+            }
+
+            return ShouldCleanupDepletedGuardParty(
+                party.MemberRoster.TotalManCount,
+                party.Party?.NumberOfHealthyMembers ?? party.MemberRoster.TotalHealthyCount);
+        }
+
+        /// <summary>
+        /// Determines whether a managed guard party should be removed because it has
+        /// no total troops or no healthy troops left to patrol.
+        /// </summary>
+        /// <param name="totalTroops">The party's total troop count, including wounded troops.</param>
+        /// <param name="healthyTroops">The party's healthy troop count.</param>
+        /// <returns><c>true</c> when the party should be cleaned up; otherwise <c>false</c>.</returns>
+        internal static bool ShouldCleanupDepletedGuardParty(int totalTroops, int healthyTroops)
+        {
+            return totalTroops <= 0 || healthyTroops <= 0;
+        }
+
+        private static bool HasUsableGuardTroops(MobileParty party)
+        {
+            return party?.IsActive == true
+                && party.MemberRoster != null
+                && !ShouldCleanupDepletedGuardParty(
+                    party.MemberRoster.TotalManCount,
+                    party.Party?.NumberOfHealthyMembers ?? party.MemberRoster.TotalHealthyCount);
         }
 
         private static MobileParty FindGuardParty(Settlement settlement)
@@ -322,7 +391,7 @@ namespace ImprovedGarrisons
                 return null;
             }
 
-            if (guardParty.MemberRoster.TotalManCount > 0)
+            if (HasUsableGuardTroops(guardParty))
             {
                 return guardParty;
             }
@@ -381,7 +450,9 @@ namespace ImprovedGarrisons
                 return 0;
             }
 
-            int excessTroops = guardParty.MemberRoster.TotalManCount - settings.GuardPartyMaxSize;
+            int totalDefensiveTroops = settlement.Town.GarrisonParty.MemberRoster.TotalManCount + guardParty.MemberRoster.TotalManCount;
+            int guardPartyMaxSize = settings.ResolveGuardPartyMaxSize(totalDefensiveTroops);
+            int excessTroops = guardParty.MemberRoster.TotalManCount - guardPartyMaxSize;
             if (excessTroops <= 0)
             {
                 return 0;

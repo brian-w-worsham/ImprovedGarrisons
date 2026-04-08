@@ -46,7 +46,9 @@ namespace ImprovedGarrisons.Tests
             var autoTrainingEnabled = new List<int>();
             var guardPartyEnabled = new List<int>();
             var recruitmentThresholds = new List<int>();
+            var recruitmentThresholdOverrides = new List<int>();
             var guardPartyMaxSizes = new List<int>();
+            var guardPartyMaxSizeOverrides = new List<int>();
             var guardPartyAutoRefillEnabled = new List<int>();
             var recruitEliteOnly = new List<int>();
             var dailyRecruitBudgets = new List<int>();
@@ -59,7 +61,9 @@ namespace ImprovedGarrisons.Tests
             autoTrainingEnabled.AddRange(state.AutoTrainingEnabled);
             guardPartyEnabled.AddRange(state.GuardPartyEnabled);
             recruitmentThresholds.AddRange(state.RecruitmentThresholds);
+            recruitmentThresholdOverrides.AddRange(state.RecruitmentThresholdOverrides);
             guardPartyMaxSizes.AddRange(state.GuardPartyMaxSizes);
+            guardPartyMaxSizeOverrides.AddRange(state.GuardPartyMaxSizeOverrides);
             guardPartyAutoRefillEnabled.AddRange(state.GuardPartyAutoRefillEnabled);
             recruitEliteOnly.AddRange(state.RecruitEliteOnly);
             dailyRecruitBudgets.AddRange(state.DailyRecruitBudgets);
@@ -72,7 +76,9 @@ namespace ImprovedGarrisons.Tests
                 AutoTrainingEnabled = autoTrainingEnabled,
                 GuardPartyEnabled = guardPartyEnabled,
                 RecruitmentThresholds = recruitmentThresholds,
+                RecruitmentThresholdOverrides = recruitmentThresholdOverrides,
                 GuardPartyMaxSizes = guardPartyMaxSizes,
+                GuardPartyMaxSizeOverrides = guardPartyMaxSizeOverrides,
                 GuardPartyAutoRefillEnabled = guardPartyAutoRefillEnabled,
                 RecruitEliteOnly = recruitEliteOnly,
                 DailyRecruitBudgets = dailyRecruitBudgets
@@ -117,11 +123,62 @@ namespace ImprovedGarrisons.Tests
             Assert.True(settings.AutoRecruitPrisonersEnabled);
             Assert.True(settings.AutoTrainingEnabled);
             Assert.True(settings.GuardPartyEnabled);
-            Assert.Equal(100, settings.RecruitmentThreshold);
-            Assert.Equal(30, settings.GuardPartyMaxSize);
+            Assert.Equal(GarrisonSettings.AutomaticRecruitmentThreshold, settings.RecruitmentThreshold);
+            Assert.Equal(425, settings.ResolveRecruitmentThreshold(425));
+            Assert.Equal(GarrisonSettings.AutomaticGuardPartyMaxSize, settings.GuardPartyMaxSize);
+            Assert.Equal(50, settings.ResolveGuardPartyMaxSize(200));
             Assert.True(settings.GuardPartyAutoRefill);
             Assert.False(settings.RecruitEliteOnly);
             Assert.Equal(0, settings.DailyRecruitBudget);
+        }
+
+        [Theory]
+        [InlineData(100)]
+        [InlineData(200)]
+        public void ReadSyncData_MigratesLegacyDefaultRecruitmentThresholdToAutomaticSizing(int legacyThreshold)
+        {
+            var restored = new GarrisonSettingsSyncState
+            {
+                SettlementIds = new List<string> { TownSettlementId },
+                RecruitmentThresholds = new List<int> { legacyThreshold }
+            }.ToDictionary();
+
+            var settings = restored[TownSettlementId];
+
+            Assert.Equal(GarrisonSettings.AutomaticRecruitmentThreshold, settings.RecruitmentThreshold);
+            Assert.Equal(425, settings.ResolveRecruitmentThreshold(425));
+        }
+
+        [Fact]
+        public void ReadSyncData_MigratesLegacyDefaultGuardPartyMaxSizeToAutomaticSizing()
+        {
+            var restored = new GarrisonSettingsSyncState
+            {
+                SettlementIds = new List<string> { TownSettlementId },
+                GuardPartyMaxSizes = new List<int> { 30 }
+            }.ToDictionary();
+
+            var settings = restored[TownSettlementId];
+
+            Assert.Equal(GarrisonSettings.AutomaticGuardPartyMaxSize, settings.GuardPartyMaxSize);
+            Assert.Equal(75, settings.ResolveGuardPartyMaxSize(300));
+        }
+
+        [Fact]
+        public void SyncDataHelpers_RoundTripAutomaticGuardPartyMaxSize()
+        {
+            var source = new Dictionary<string, GarrisonSettings>
+            {
+                [TownSettlementId] = new GarrisonSettings()
+            };
+
+            var restored = GarrisonSettingsSyncState.From(source).ToDictionary();
+            var settings = restored[TownSettlementId];
+
+            Assert.Equal(GarrisonSettings.AutomaticRecruitmentThreshold, settings.RecruitmentThreshold);
+            Assert.Equal(425, settings.ResolveRecruitmentThreshold(425));
+            Assert.Equal(GarrisonSettings.AutomaticGuardPartyMaxSize, settings.GuardPartyMaxSize);
+            Assert.Equal(75, settings.ResolveGuardPartyMaxSize(300));
         }
 
         [Fact]

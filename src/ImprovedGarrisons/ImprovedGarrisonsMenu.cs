@@ -23,8 +23,10 @@ namespace ImprovedGarrisons
             ToggleAutoRefill,
             IncreaseGuardPartySize,
             DecreaseGuardPartySize,
+            ResetGuardPartySize,
             IncreaseReserveThreshold,
             DecreaseReserveThreshold,
+            ResetReserveThreshold,
             ApplyNow
         }
 
@@ -39,8 +41,10 @@ namespace ImprovedGarrisons
         private const string ToggleAutoRefillOptionId = "improved_garrisons_toggle_guard_auto_refill";
         private const string IncreaseGuardPartySizeOptionId = "improved_garrisons_increase_guard_party_size";
         private const string DecreaseGuardPartySizeOptionId = "improved_garrisons_decrease_guard_party_size";
+        private const string ResetGuardPartySizeOptionId = "improved_garrisons_reset_guard_party_size";
         private const string IncreaseReserveThresholdOptionId = "improved_garrisons_increase_reserve_threshold";
         private const string DecreaseReserveThresholdOptionId = "improved_garrisons_decrease_reserve_threshold";
+        private const string ResetReserveThresholdOptionId = "improved_garrisons_reset_reserve_threshold";
         private const string ApplyNowOptionId = "improved_garrisons_apply_guard_settings";
         private const string BackOptionId = "improved_garrisons_guard_settings_back";
         private static readonly MethodInfo GameMenuAddOptionMethod = typeof(GameMenu).GetMethod(
@@ -140,12 +144,22 @@ namespace ImprovedGarrisons
 
             campaignStarter.AddGameMenuOption(
                 GuardSettingsMenuId,
+                ResetGuardPartySizeOptionId,
+                "Reset max guard size",
+                CanResetGuardPartySize,
+                ResetGuardPartySize,
+                false,
+                4,
+                false);
+
+            campaignStarter.AddGameMenuOption(
+                GuardSettingsMenuId,
                 IncreaseReserveThresholdOptionId,
                 "Increase reserve threshold",
                 CanIncreaseReserveThreshold,
                 IncreaseReserveThreshold,
                 false,
-                4,
+                5,
                 false);
 
             campaignStarter.AddGameMenuOption(
@@ -155,7 +169,17 @@ namespace ImprovedGarrisons
                 CanDecreaseReserveThreshold,
                 DecreaseReserveThreshold,
                 false,
-                5,
+                6,
+                false);
+
+            campaignStarter.AddGameMenuOption(
+                GuardSettingsMenuId,
+                ResetReserveThresholdOptionId,
+                "Reset reserve threshold",
+                CanResetReserveThreshold,
+                ResetReserveThreshold,
+                false,
+                7,
                 false);
 
             campaignStarter.AddGameMenuOption(
@@ -165,7 +189,7 @@ namespace ImprovedGarrisons
                 CanApplyGuardSettingsNow,
                 ApplyGuardSettingsNow,
                 false,
-                6,
+                8,
                 false);
 
             campaignStarter.AddGameMenuOption(
@@ -246,14 +270,19 @@ namespace ImprovedGarrisons
         /// <param name="settlementName">The current settlement name.</param>
         /// <param name="settings">The configured settings for the settlement.</param>
         /// <param name="activeGuardPartySize">The current active guard party size.</param>
+        /// <param name="defensiveTroopCount">Current troops across the garrison and guard party.</param>
+        /// <param name="maximumGarrisonCapacity">The settlement's current garrison troop limit.</param>
         /// <returns>A summary of the active settings and guard status.</returns>
-        internal static string BuildGuardSettingsMenuText(string settlementName, GarrisonSettings settings, int activeGuardPartySize)
+        internal static string BuildGuardSettingsMenuText(string settlementName, GarrisonSettings settings, int activeGuardPartySize, int defensiveTroopCount, int maximumGarrisonCapacity)
         {
             var effectiveSettings = settings ?? new GarrisonSettings();
             string enabledText = effectiveSettings.GuardPartyEnabled ? "Enabled" : "Disabled";
             string autoRefillText = effectiveSettings.GuardPartyAutoRefill ? "Enabled" : "Disabled";
-            int maxSize = GarrisonSettings.ClampGuardPartyMaxSize(effectiveSettings.GuardPartyMaxSize);
-            int reserveThreshold = GarrisonSettings.ClampRecruitmentThreshold(effectiveSettings.RecruitmentThreshold);
+            int maxSize = effectiveSettings.ResolveGuardPartyMaxSize(defensiveTroopCount);
+            string maxSizeText = BuildGuardPartySizeValueText(maxSize, effectiveSettings.UsesAutomaticGuardPartyMaxSize);
+            int reserveThreshold = effectiveSettings.ResolveRecruitmentThreshold(maximumGarrisonCapacity);
+            string reserveThresholdText = BuildReserveThresholdValueText(reserveThreshold, effectiveSettings.UsesAutomaticRecruitmentThreshold);
+            string protectedGarrisonText = BuildProtectedGarrisonValueText(reserveThreshold);
             string activeGuardText = activeGuardPartySize > 0
                 ? $"{activeGuardPartySize} troops deployed"
                 : "None deployed";
@@ -261,9 +290,49 @@ namespace ImprovedGarrisons
             return $"Configure guard parties for {ResolveSettlementName(settlementName)}.{Environment.NewLine}{Environment.NewLine}"
                 + $"Guard parties: {enabledText}{Environment.NewLine}"
                 + $"Auto-refill: {autoRefillText}{Environment.NewLine}"
-                + $"Max guard size: {maxSize}{Environment.NewLine}"
-                + $"Garrison reserve threshold: {reserveThreshold}{Environment.NewLine}"
+                + $"Max guard size: {maxSizeText}{Environment.NewLine}"
+                + $"Auto-recruit target: {reserveThresholdText}{Environment.NewLine}"
+                + $"Guard refill keeps at least: {protectedGarrisonText}{Environment.NewLine}"
                 + $"Active guard party: {activeGuardText}";
+        }
+
+        /// <summary>
+        /// Builds the display text for a guard-party max size value.
+        /// </summary>
+        /// <param name="currentValue">The effective current max size.</param>
+        /// <param name="usesAutomaticValue">Whether the size is using automatic per-settlement sizing.</param>
+        /// <returns>A player-facing display value.</returns>
+        internal static string BuildGuardPartySizeValueText(int currentValue, bool usesAutomaticValue)
+        {
+            int normalizedCurrent = GarrisonSettings.ClampGuardPartyMaxSize(currentValue);
+            return usesAutomaticValue
+                ? $"Auto ({normalizedCurrent})"
+                : normalizedCurrent.ToString();
+        }
+
+        /// <summary>
+        /// Builds the display text for a reserve threshold value.
+        /// </summary>
+        /// <param name="currentValue">The effective current threshold.</param>
+        /// <param name="usesAutomaticValue">Whether the threshold is using automatic settlement-capacity sizing.</param>
+        /// <returns>A player-facing display value.</returns>
+        internal static string BuildReserveThresholdValueText(int currentValue, bool usesAutomaticValue)
+        {
+            int normalizedCurrent = Math.Max(GarrisonSettings.MinRecruitmentThreshold, currentValue);
+            return usesAutomaticValue
+                ? $"Auto ({normalizedCurrent})"
+                : normalizedCurrent.ToString();
+        }
+
+        /// <summary>
+        /// Builds the display text for the number of troops guard refill will keep in the garrison.
+        /// </summary>
+        /// <param name="reserveThreshold">The effective recruitment threshold.</param>
+        /// <returns>A player-facing description of the protected garrison amount.</returns>
+        internal static string BuildProtectedGarrisonValueText(int reserveThreshold)
+        {
+            int protectedTroops = Math.Max(0, reserveThreshold / 2);
+            return $"{protectedTroops} troops in garrison";
         }
 
         /// <summary>
@@ -292,28 +361,52 @@ namespace ImprovedGarrisons
         /// <param name="currentValue">The current max size.</param>
         /// <param name="increase">Whether the action increases or decreases the value.</param>
         /// <returns>A player-facing option label.</returns>
-        internal static string BuildGuardPartySizeOptionText(int currentValue, bool increase)
+        internal static string BuildGuardPartySizeOptionText(int currentValue, bool increase, bool usesAutomaticValue)
         {
             int normalizedCurrent = GarrisonSettings.ClampGuardPartyMaxSize(currentValue);
             int delta = increase ? GarrisonSettings.GuardPartyMaxSizeStep : -GarrisonSettings.GuardPartyMaxSizeStep;
             int nextValue = GarrisonSettings.ClampGuardPartyMaxSize(normalizedCurrent + delta);
             string action = increase ? "Increase" : "Decrease";
-            return $"{action} max guard size ({normalizedCurrent} -> {nextValue})";
+            string currentValueText = BuildGuardPartySizeValueText(normalizedCurrent, usesAutomaticValue);
+            return $"{action} max guard size ({currentValueText} -> {nextValue})";
+        }
+
+        /// <summary>
+        /// Builds the option label for reverting a fixed guard-party max size back to automatic sizing.
+        /// </summary>
+        /// <param name="automaticValue">The current automatic guard-party max size.</param>
+        /// <returns>A player-facing option label.</returns>
+        internal static string BuildResetGuardPartySizeOptionText(int automaticValue)
+        {
+            return $"Reset max guard size to {BuildGuardPartySizeValueText(automaticValue, usesAutomaticValue: true)}";
         }
 
         /// <summary>
         /// Builds a reserve threshold adjustment label using the current and next values.
         /// </summary>
-        /// <param name="currentValue">The current reserve threshold.</param>
+        /// <param name="currentValue">The current effective reserve threshold.</param>
         /// <param name="increase">Whether the action increases or decreases the value.</param>
+        /// <param name="usesAutomaticValue">Whether the threshold is currently automatic.</param>
+        /// <param name="maximumValue">The settlement's current maximum garrison capacity.</param>
         /// <returns>A player-facing option label.</returns>
-        internal static string BuildReserveThresholdOptionText(int currentValue, bool increase)
+        internal static string BuildReserveThresholdOptionText(int currentValue, bool increase, bool usesAutomaticValue, int maximumValue)
         {
-            int normalizedCurrent = GarrisonSettings.ClampRecruitmentThreshold(currentValue);
+            int normalizedCurrent = GarrisonSettings.ClampRecruitmentThreshold(currentValue, maximumValue);
             int delta = increase ? GarrisonSettings.RecruitmentThresholdStep : -GarrisonSettings.RecruitmentThresholdStep;
-            int nextValue = GarrisonSettings.ClampRecruitmentThreshold(normalizedCurrent + delta);
+            int nextValue = GarrisonSettings.ClampRecruitmentThreshold(normalizedCurrent + delta, maximumValue);
             string action = increase ? "Increase" : "Decrease";
-            return $"{action} reserve threshold ({normalizedCurrent} -> {nextValue})";
+            string currentValueText = BuildReserveThresholdValueText(normalizedCurrent, usesAutomaticValue);
+            return $"{action} auto-recruit target ({currentValueText} -> {nextValue})";
+        }
+
+        /// <summary>
+        /// Builds the option label for reverting a fixed reserve threshold back to the automatic settlement capacity.
+        /// </summary>
+        /// <param name="automaticValue">The current automatic reserve threshold.</param>
+        /// <returns>A player-facing option label.</returns>
+        internal static string BuildResetReserveThresholdOptionText(int automaticValue)
+        {
+            return $"Reset auto-recruit target to {BuildReserveThresholdValueText(automaticValue, usesAutomaticValue: true)}";
         }
 
         /// <summary>
@@ -334,9 +427,9 @@ namespace ImprovedGarrisons
                 : "Create guard party now";
         }
 
-        internal static string BuildGuardSettingsInquiryText(string settlementName, GarrisonSettings settings, int activeGuardPartySize)
+        internal static string BuildGuardSettingsInquiryText(string settlementName, GarrisonSettings settings, int activeGuardPartySize, int defensiveTroopCount, int maximumGarrisonCapacity)
         {
-            return BuildGuardSettingsMenuText(settlementName, settings, activeGuardPartySize)
+            return BuildGuardSettingsMenuText(settlementName, settings, activeGuardPartySize, defensiveTroopCount, maximumGarrisonCapacity)
                 + $"{Environment.NewLine}{Environment.NewLine}Select one action, then choose Apply.";
         }
 
@@ -351,12 +444,18 @@ namespace ImprovedGarrisons
                 return;
             }
 
+            int activeGuardPartySize = GuardPartyManager.GetActiveGuardPartySize(settlement);
+            int defensiveTroopCount = GetTotalDefensiveTroopCount(settlement);
+            int maximumGarrisonCapacity = GetMaximumGarrisonCapacity(settlement);
+
             args.MenuTitle = new TextObject(BuildGuardSettingsMenuTitle(settlement.Name?.ToString()));
             args.Text = new TextObject(
                 BuildGuardSettingsMenuText(
                     settlement.Name?.ToString(),
                     settings,
-                    GuardPartyManager.GetActiveGuardPartySize(settlement)));
+                    activeGuardPartySize,
+                    defensiveTroopCount,
+                    maximumGarrisonCapacity));
         }
 
         private static bool CanOpenGuardSettingsMenu(MenuCallbackArgs args)
@@ -471,6 +570,42 @@ namespace ImprovedGarrisons
             AdjustGuardPartySize(args, -GarrisonSettings.GuardPartyMaxSizeStep);
         }
 
+        private static bool CanResetGuardPartySize(MenuCallbackArgs args)
+        {
+            if (!TryGetMenuContext(args, out Settlement settlement, out GarrisonSettings settings))
+            {
+                return false;
+            }
+
+            int automaticGuardPartyMaxSize = GarrisonSettings.CalculateAutomaticGuardPartyMaxSize(GetTotalDefensiveTroopCount(settlement));
+            args.IsEnabled = !settings.UsesAutomaticGuardPartyMaxSize;
+            args.optionLeaveType = GameMenuOption.LeaveType.Manage;
+            args.Text = new TextObject(BuildResetGuardPartySizeOptionText(automaticGuardPartyMaxSize));
+            args.Tooltip = new TextObject(settings.UsesAutomaticGuardPartyMaxSize
+                ? $"The guard-party max size already uses the automatic value of {automaticGuardPartyMaxSize}."
+                : "Return the guard-party max size to the automatic value based on 25% of the current defensive troops.");
+            return true;
+        }
+
+        private static void ResetGuardPartySize(MenuCallbackArgs args)
+        {
+            if (!TryGetMenuContext(args, out Settlement settlement, out GarrisonSettings settings) || settings.UsesAutomaticGuardPartyMaxSize)
+            {
+                return;
+            }
+
+            int defensiveTroopCount = GetTotalDefensiveTroopCount(settlement);
+            settings.ResetGuardPartyMaxSize();
+            int automaticValue = settings.ResolveGuardPartyMaxSize(defensiveTroopCount);
+
+            ApplyGuardSettings(settlement, settings);
+            InformationManager.DisplayMessage(
+                new InformationMessage(
+                    $"Improved Garrisons: {settlement.Name} guard-party max size reset to Auto ({automaticValue}).",
+                    Colors.Yellow));
+            RefreshGuardSettingsMenu(args);
+        }
+
         private static bool CanIncreaseReserveThreshold(MenuCallbackArgs args)
         {
             return ConfigureReserveThresholdOption(args, increase: true);
@@ -489,6 +624,43 @@ namespace ImprovedGarrisons
         private static void DecreaseReserveThreshold(MenuCallbackArgs args)
         {
             AdjustReserveThreshold(args, -GarrisonSettings.RecruitmentThresholdStep);
+        }
+
+        private static bool CanResetReserveThreshold(MenuCallbackArgs args)
+        {
+            if (!TryGetMenuContext(args, out Settlement settlement, out GarrisonSettings settings))
+            {
+                return false;
+            }
+
+            int automaticReserveThreshold = GarrisonSettings.CalculateAutomaticRecruitmentThreshold(settlement);
+            string protectedGarrisonText = BuildProtectedGarrisonValueText(automaticReserveThreshold);
+            args.IsEnabled = !settings.UsesAutomaticRecruitmentThreshold;
+            args.optionLeaveType = GameMenuOption.LeaveType.Manage;
+            args.Text = new TextObject(BuildResetReserveThresholdOptionText(automaticReserveThreshold));
+            args.Tooltip = new TextObject(settings.UsesAutomaticRecruitmentThreshold
+                ? $"Auto-recruitment already stops at {automaticReserveThreshold}, and guard refill keeps at least {protectedGarrisonText}."
+                : "Return the auto-recruit target to the settlement's garrison capacity. Guard refill keeps at least half of that value in the garrison.");
+            return true;
+        }
+
+        private static void ResetReserveThreshold(MenuCallbackArgs args)
+        {
+            if (!TryGetMenuContext(args, out Settlement settlement, out GarrisonSettings settings) || settings.UsesAutomaticRecruitmentThreshold)
+            {
+                return;
+            }
+
+            settings.ResetRecruitmentThreshold();
+            int automaticValue = settings.ResolveRecruitmentThreshold(settlement);
+            string protectedGarrisonText = BuildProtectedGarrisonValueText(automaticValue);
+
+            ApplyGuardSettings(settlement, settings);
+            InformationManager.DisplayMessage(
+                new InformationMessage(
+                    $"Improved Garrisons: {settlement.Name} auto-recruit target reset to Auto ({automaticValue}). Guard refill now keeps at least {protectedGarrisonText}.",
+                    Colors.Yellow));
+            RefreshGuardSettingsMenu(args);
         }
 
         private static bool CanApplyGuardSettingsNow(MenuCallbackArgs args)
@@ -544,18 +716,19 @@ namespace ImprovedGarrisons
 
         private static bool ConfigureGuardPartySizeOption(MenuCallbackArgs args, bool increase)
         {
-            if (!TryGetMenuContext(args, out _, out GarrisonSettings settings))
+            if (!TryGetMenuContext(args, out Settlement settlement, out GarrisonSettings settings))
             {
                 return false;
             }
 
+            int currentGuardPartyMaxSize = ResolveGuardPartyMaxSize(settlement, settings);
             bool isEnabled = increase
-                ? settings.GuardPartyMaxSize < GarrisonSettings.MaxGuardPartyMaxSize
-                : settings.GuardPartyMaxSize > GarrisonSettings.MinGuardPartyMaxSize;
+                ? currentGuardPartyMaxSize < GarrisonSettings.MaxGuardPartyMaxSize
+                : currentGuardPartyMaxSize > GarrisonSettings.MinGuardPartyMaxSize;
 
             args.IsEnabled = isEnabled;
             args.optionLeaveType = GameMenuOption.LeaveType.Manage;
-            args.Text = new TextObject(BuildGuardPartySizeOptionText(settings.GuardPartyMaxSize, increase));
+            args.Text = new TextObject(BuildGuardPartySizeOptionText(currentGuardPartyMaxSize, increase, settings.UsesAutomaticGuardPartyMaxSize));
             args.Tooltip = new TextObject(increase
                 ? $"Raise the maximum number of troops assigned to the guard party. Maximum: {GarrisonSettings.MaxGuardPartyMaxSize}."
                 : $"Lower the maximum number of troops assigned to the guard party. Minimum: {GarrisonSettings.MinGuardPartyMaxSize}.");
@@ -564,21 +737,24 @@ namespace ImprovedGarrisons
 
         private static bool ConfigureReserveThresholdOption(MenuCallbackArgs args, bool increase)
         {
-            if (!TryGetMenuContext(args, out _, out GarrisonSettings settings))
+            if (!TryGetMenuContext(args, out Settlement settlement, out GarrisonSettings settings))
             {
                 return false;
             }
 
+            int maximumGarrisonCapacity = GetMaximumGarrisonCapacity(settlement);
+            int currentReserveThreshold = settings.ResolveRecruitmentThreshold(maximumGarrisonCapacity);
+            int maximumReserveThreshold = GarrisonSettings.GetMaximumRecruitmentThreshold(maximumGarrisonCapacity);
             bool isEnabled = increase
-                ? settings.RecruitmentThreshold < GarrisonSettings.MaxRecruitmentThreshold
-                : settings.RecruitmentThreshold > GarrisonSettings.MinRecruitmentThreshold;
+                ? currentReserveThreshold < maximumReserveThreshold
+                : currentReserveThreshold > GarrisonSettings.MinRecruitmentThreshold;
 
             args.IsEnabled = isEnabled;
             args.optionLeaveType = GameMenuOption.LeaveType.Manage;
-            args.Text = new TextObject(BuildReserveThresholdOptionText(settings.RecruitmentThreshold, increase));
+            args.Text = new TextObject(BuildReserveThresholdOptionText(currentReserveThreshold, increase, settings.UsesAutomaticRecruitmentThreshold, maximumGarrisonCapacity));
             args.Tooltip = new TextObject(increase
-                ? $"Keep more troops in the garrison before guard parties pull reinforcements. Maximum: {GarrisonSettings.MaxRecruitmentThreshold}."
-                : $"Allow guard parties to draw reinforcements sooner. Minimum: {GarrisonSettings.MinRecruitmentThreshold}.");
+                ? $"Raise the garrison size where auto-recruitment stops. Guard refill only takes troops above half this value. Maximum: {maximumReserveThreshold}."
+                : $"Lower the garrison size where auto-recruitment stops. Guard refill only takes troops above half this value. Minimum: {GarrisonSettings.MinRecruitmentThreshold}.");
             return true;
         }
 
@@ -589,8 +765,9 @@ namespace ImprovedGarrisons
                 return;
             }
 
-            int previousValue = settings.GuardPartyMaxSize;
-            int newValue = settings.AdjustGuardPartyMaxSize(delta);
+            int defensiveTroopCount = GetTotalDefensiveTroopCount(settlement);
+            int previousValue = settings.ResolveGuardPartyMaxSize(defensiveTroopCount);
+            int newValue = settings.AdjustGuardPartyMaxSize(delta, defensiveTroopCount);
             if (newValue == previousValue)
             {
                 return;
@@ -611,17 +788,20 @@ namespace ImprovedGarrisons
                 return;
             }
 
-            int previousValue = settings.RecruitmentThreshold;
-            int newValue = settings.AdjustRecruitmentThreshold(delta);
+            int maximumGarrisonCapacity = GetMaximumGarrisonCapacity(settlement);
+            int previousValue = settings.ResolveRecruitmentThreshold(maximumGarrisonCapacity);
+            int newValue = settings.AdjustRecruitmentThreshold(delta, maximumGarrisonCapacity);
             if (newValue == previousValue)
             {
                 return;
             }
 
+            string protectedGarrisonText = BuildProtectedGarrisonValueText(newValue);
+
             ApplyGuardSettings(settlement, settings);
             InformationManager.DisplayMessage(
                 new InformationMessage(
-                    $"Improved Garrisons: {settlement.Name} guard reserve threshold set to {newValue}.",
+                    $"Improved Garrisons: {settlement.Name} auto-recruit target set to {newValue}. Guard refill now keeps at least {protectedGarrisonText}.",
                     Colors.Yellow));
             RefreshGuardSettingsMenu(args);
         }
@@ -649,10 +829,12 @@ namespace ImprovedGarrisons
             effectiveSettings.Normalize();
 
             int activeGuardPartySize = GuardPartyManager.GetActiveGuardPartySize(settlement);
+            int defensiveTroopCount = GetTotalDefensiveTroopCount(settlement);
+            int maximumGarrisonCapacity = GetMaximumGarrisonCapacity(settlement);
             var inquiry = new MultiSelectionInquiryData(
                 BuildGuardSettingsMenuTitle(settlement.Name?.ToString()),
-                BuildGuardSettingsInquiryText(settlement.Name?.ToString(), effectiveSettings, activeGuardPartySize),
-                BuildGuardSettingsInquiryOptions(settlement, effectiveSettings, activeGuardPartySize),
+                BuildGuardSettingsInquiryText(settlement.Name?.ToString(), effectiveSettings, activeGuardPartySize, defensiveTroopCount, maximumGarrisonCapacity),
+                BuildGuardSettingsInquiryOptions(settlement, effectiveSettings, activeGuardPartySize, defensiveTroopCount, maximumGarrisonCapacity),
                 true,
                 1,
                 1,
@@ -666,8 +848,14 @@ namespace ImprovedGarrisons
             MBInformationManager.ShowMultiSelectionInquiry(inquiry, true, false);
         }
 
-        private static List<InquiryElement> BuildGuardSettingsInquiryOptions(Settlement settlement, GarrisonSettings settings, int activeGuardPartySize)
+        private static List<InquiryElement> BuildGuardSettingsInquiryOptions(Settlement settlement, GarrisonSettings settings, int activeGuardPartySize, int defensiveTroopCount, int maximumGarrisonCapacity)
         {
+            int currentGuardPartyMaxSize = settings.ResolveGuardPartyMaxSize(defensiveTroopCount);
+            int automaticGuardPartyMaxSize = GarrisonSettings.CalculateAutomaticGuardPartyMaxSize(defensiveTroopCount);
+            int currentReserveThreshold = settings.ResolveRecruitmentThreshold(maximumGarrisonCapacity);
+            int automaticReserveThreshold = GarrisonSettings.CalculateAutomaticRecruitmentThreshold(maximumGarrisonCapacity);
+            int maximumReserveThreshold = GarrisonSettings.GetMaximumRecruitmentThreshold(maximumGarrisonCapacity);
+
             return new List<InquiryElement>
             {
                 CreateGuardSettingsInquiryElement(
@@ -683,35 +871,49 @@ namespace ImprovedGarrisons
                     true,
                     settings.GuardPartyAutoRefill
                         ? $"Stop refilling {ResolveSettlementName(settlement.Name?.ToString())}'s guard party from the garrison."
-                        : "Allow the guard party to refill from troops above the reserve threshold."),
+                        : "Allow the guard party to refill from troops above the protected garrison reserve."),
                 CreateGuardSettingsInquiryElement(
                     GuardSettingsInquiryAction.IncreaseGuardPartySize,
-                    BuildGuardPartySizeOptionText(settings.GuardPartyMaxSize, increase: true),
-                    settings.GuardPartyMaxSize < GarrisonSettings.MaxGuardPartyMaxSize,
-                    settings.GuardPartyMaxSize < GarrisonSettings.MaxGuardPartyMaxSize
+                    BuildGuardPartySizeOptionText(currentGuardPartyMaxSize, increase: true, settings.UsesAutomaticGuardPartyMaxSize),
+                    currentGuardPartyMaxSize < GarrisonSettings.MaxGuardPartyMaxSize,
+                    currentGuardPartyMaxSize < GarrisonSettings.MaxGuardPartyMaxSize
                         ? $"Raise the maximum number of troops assigned to the guard party. Maximum: {GarrisonSettings.MaxGuardPartyMaxSize}."
                         : $"The guard-party max size is already at the maximum of {GarrisonSettings.MaxGuardPartyMaxSize}."),
                 CreateGuardSettingsInquiryElement(
                     GuardSettingsInquiryAction.DecreaseGuardPartySize,
-                    BuildGuardPartySizeOptionText(settings.GuardPartyMaxSize, increase: false),
-                    settings.GuardPartyMaxSize > GarrisonSettings.MinGuardPartyMaxSize,
-                    settings.GuardPartyMaxSize > GarrisonSettings.MinGuardPartyMaxSize
+                    BuildGuardPartySizeOptionText(currentGuardPartyMaxSize, increase: false, settings.UsesAutomaticGuardPartyMaxSize),
+                    currentGuardPartyMaxSize > GarrisonSettings.MinGuardPartyMaxSize,
+                    currentGuardPartyMaxSize > GarrisonSettings.MinGuardPartyMaxSize
                         ? $"Lower the maximum number of troops assigned to the guard party. Minimum: {GarrisonSettings.MinGuardPartyMaxSize}."
                         : $"The guard-party max size is already at the minimum of {GarrisonSettings.MinGuardPartyMaxSize}."),
                 CreateGuardSettingsInquiryElement(
+                    GuardSettingsInquiryAction.ResetGuardPartySize,
+                    BuildResetGuardPartySizeOptionText(automaticGuardPartyMaxSize),
+                    !settings.UsesAutomaticGuardPartyMaxSize,
+                    settings.UsesAutomaticGuardPartyMaxSize
+                        ? $"The guard-party max size already uses the automatic value of {automaticGuardPartyMaxSize}."
+                        : "Return the guard-party max size to the automatic value based on 25% of the current defensive troops."),
+                CreateGuardSettingsInquiryElement(
                     GuardSettingsInquiryAction.IncreaseReserveThreshold,
-                    BuildReserveThresholdOptionText(settings.RecruitmentThreshold, increase: true),
-                    settings.RecruitmentThreshold < GarrisonSettings.MaxRecruitmentThreshold,
-                    settings.RecruitmentThreshold < GarrisonSettings.MaxRecruitmentThreshold
-                        ? $"Keep more troops in the garrison before guard parties pull reinforcements. Maximum: {GarrisonSettings.MaxRecruitmentThreshold}."
-                        : $"The reserve threshold is already at the maximum of {GarrisonSettings.MaxRecruitmentThreshold}."),
+                    BuildReserveThresholdOptionText(currentReserveThreshold, increase: true, settings.UsesAutomaticRecruitmentThreshold, maximumGarrisonCapacity),
+                    currentReserveThreshold < maximumReserveThreshold,
+                    currentReserveThreshold < maximumReserveThreshold
+                        ? $"Raise the garrison size where auto-recruitment stops. Guard refill only takes troops above half this value. Maximum: {maximumReserveThreshold}."
+                        : $"The reserve threshold is already at the maximum of {maximumReserveThreshold}."),
                 CreateGuardSettingsInquiryElement(
                     GuardSettingsInquiryAction.DecreaseReserveThreshold,
-                    BuildReserveThresholdOptionText(settings.RecruitmentThreshold, increase: false),
-                    settings.RecruitmentThreshold > GarrisonSettings.MinRecruitmentThreshold,
-                    settings.RecruitmentThreshold > GarrisonSettings.MinRecruitmentThreshold
-                        ? $"Allow guard parties to draw reinforcements sooner. Minimum: {GarrisonSettings.MinRecruitmentThreshold}."
+                    BuildReserveThresholdOptionText(currentReserveThreshold, increase: false, settings.UsesAutomaticRecruitmentThreshold, maximumGarrisonCapacity),
+                    currentReserveThreshold > GarrisonSettings.MinRecruitmentThreshold,
+                    currentReserveThreshold > GarrisonSettings.MinRecruitmentThreshold
+                        ? $"Lower the garrison size where auto-recruitment stops. Guard refill only takes troops above half this value. Minimum: {GarrisonSettings.MinRecruitmentThreshold}."
                         : $"The reserve threshold is already at the minimum of {GarrisonSettings.MinRecruitmentThreshold}."),
+                CreateGuardSettingsInquiryElement(
+                    GuardSettingsInquiryAction.ResetReserveThreshold,
+                    BuildResetReserveThresholdOptionText(automaticReserveThreshold),
+                    !settings.UsesAutomaticRecruitmentThreshold,
+                    settings.UsesAutomaticRecruitmentThreshold
+                        ? $"Auto-recruitment already stops at {automaticReserveThreshold}, and guard refill keeps at least {BuildProtectedGarrisonValueText(automaticReserveThreshold)}."
+                        : "Return the auto-recruit target to the settlement's garrison capacity. Guard refill keeps at least half of that value in the garrison."),
                 CreateGuardSettingsInquiryElement(
                     GuardSettingsInquiryAction.ApplyNow,
                     BuildApplyGuardSettingsOptionText(settings.GuardPartyEnabled, activeGuardPartySize),
@@ -768,9 +970,17 @@ namespace ImprovedGarrisons
                     AdjustGuardPartySizeFromInquiry(settlement, settings, action == GuardSettingsInquiryAction.IncreaseGuardPartySize);
                     break;
 
+                case GuardSettingsInquiryAction.ResetGuardPartySize:
+                    ResetGuardPartySizeFromInquiry(settlement, settings);
+                    break;
+
                 case GuardSettingsInquiryAction.IncreaseReserveThreshold:
                 case GuardSettingsInquiryAction.DecreaseReserveThreshold:
                     AdjustReserveThresholdFromInquiry(settlement, settings, action == GuardSettingsInquiryAction.IncreaseReserveThreshold);
+                    break;
+
+                case GuardSettingsInquiryAction.ResetReserveThreshold:
+                    ResetReserveThresholdFromInquiry(settlement, settings);
                     break;
 
                 case GuardSettingsInquiryAction.ApplyNow:
@@ -808,8 +1018,9 @@ namespace ImprovedGarrisons
             int delta = increase
                 ? GarrisonSettings.GuardPartyMaxSizeStep
                 : -GarrisonSettings.GuardPartyMaxSizeStep;
-            int previousSize = settings.GuardPartyMaxSize;
-            int newSize = settings.AdjustGuardPartyMaxSize(delta);
+            int defensiveTroopCount = GetTotalDefensiveTroopCount(settlement);
+            int previousSize = settings.ResolveGuardPartyMaxSize(defensiveTroopCount);
+            int newSize = settings.AdjustGuardPartyMaxSize(delta, defensiveTroopCount);
             if (newSize == previousSize)
             {
                 return;
@@ -822,22 +1033,61 @@ namespace ImprovedGarrisons
                     Colors.Yellow));
         }
 
+        private static void ResetGuardPartySizeFromInquiry(Settlement settlement, GarrisonSettings settings)
+        {
+            if (settings.UsesAutomaticGuardPartyMaxSize)
+            {
+                return;
+            }
+
+            int defensiveTroopCount = GetTotalDefensiveTroopCount(settlement);
+            settings.ResetGuardPartyMaxSize();
+            int automaticValue = settings.ResolveGuardPartyMaxSize(defensiveTroopCount);
+
+            ApplyGuardSettings(settlement, settings);
+            InformationManager.DisplayMessage(
+                new InformationMessage(
+                    $"Improved Garrisons: {settlement.Name} guard-party max size reset to Auto ({automaticValue}).",
+                    Colors.Yellow));
+        }
+
         private static void AdjustReserveThresholdFromInquiry(Settlement settlement, GarrisonSettings settings, bool increase)
         {
             int delta = increase
                 ? GarrisonSettings.RecruitmentThresholdStep
                 : -GarrisonSettings.RecruitmentThresholdStep;
-            int previousThreshold = settings.RecruitmentThreshold;
-            int newThreshold = settings.AdjustRecruitmentThreshold(delta);
+            int maximumGarrisonCapacity = GetMaximumGarrisonCapacity(settlement);
+            int previousThreshold = settings.ResolveRecruitmentThreshold(maximumGarrisonCapacity);
+            int newThreshold = settings.AdjustRecruitmentThreshold(delta, maximumGarrisonCapacity);
             if (newThreshold == previousThreshold)
             {
                 return;
             }
 
+            string protectedGarrisonText = BuildProtectedGarrisonValueText(newThreshold);
+
             ApplyGuardSettings(settlement, settings);
             InformationManager.DisplayMessage(
                 new InformationMessage(
-                    $"Improved Garrisons: {settlement.Name} guard reserve threshold set to {newThreshold}.",
+                    $"Improved Garrisons: {settlement.Name} auto-recruit target set to {newThreshold}. Guard refill now keeps at least {protectedGarrisonText}.",
+                    Colors.Yellow));
+        }
+
+        private static void ResetReserveThresholdFromInquiry(Settlement settlement, GarrisonSettings settings)
+        {
+            if (settings.UsesAutomaticRecruitmentThreshold)
+            {
+                return;
+            }
+
+            settings.ResetRecruitmentThreshold();
+            int automaticValue = settings.ResolveRecruitmentThreshold(settlement);
+            string protectedGarrisonText = BuildProtectedGarrisonValueText(automaticValue);
+
+            ApplyGuardSettings(settlement, settings);
+            InformationManager.DisplayMessage(
+                new InformationMessage(
+                    $"Improved Garrisons: {settlement.Name} auto-recruit target reset to Auto ({automaticValue}). Guard refill now keeps at least {protectedGarrisonText}.",
                     Colors.Yellow));
         }
 
@@ -870,6 +1120,26 @@ namespace ImprovedGarrisons
         {
             settlement = ResolveManagedSettlement(args);
             return settlement != null;
+        }
+
+        private static int ResolveGuardPartyMaxSize(Settlement settlement, GarrisonSettings settings)
+        {
+            return (settings ?? new GarrisonSettings()).ResolveGuardPartyMaxSize(GetTotalDefensiveTroopCount(settlement));
+        }
+
+        private static int GetMaximumGarrisonCapacity(Settlement settlement)
+        {
+            return GarrisonSettings.GetMaximumGarrisonCapacity(settlement);
+        }
+
+        private static int GetTotalDefensiveTroopCount(Settlement settlement)
+        {
+            return GetCurrentGarrisonTroopCount(settlement) + GuardPartyManager.GetActiveGuardPartySize(settlement);
+        }
+
+        private static int GetCurrentGarrisonTroopCount(Settlement settlement)
+        {
+            return settlement?.Town?.GarrisonParty?.MemberRoster?.TotalManCount ?? 0;
         }
 
         private static bool TryGetMenuContext(MenuCallbackArgs args, out Settlement settlement, out GarrisonSettings settings)
