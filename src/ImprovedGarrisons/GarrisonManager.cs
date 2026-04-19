@@ -128,7 +128,7 @@ namespace ImprovedGarrisons
                 var upgradeTargets = element.Character.UpgradeTargets;
                 if (upgradeTargets == null || upgradeTargets.Length == 0) continue;
 
-                int xpNeeded = element.Character.GetUpgradeXpCost(PartyBase.MainParty, 0);
+                int xpNeeded = element.Character.GetUpgradeXpCost(garrison.Party, 0);
                 if (xpNeeded <= 0) xpNeeded = 1;
 
                 int availableXp = element.Xp;

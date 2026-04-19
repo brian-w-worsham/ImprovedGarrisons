@@ -124,7 +124,17 @@ namespace ImprovedGarrisons
                 return;
             }
 
-            ImprovedGarrisonsMenu.TryInjectGuardSettingsOption(args.MenuContext.GameMenu);
+            try
+            {
+                ImprovedGarrisonsMenu.TryInjectGuardSettingsOption(args.MenuContext.GameMenu);
+            }
+            catch (Exception ex)
+            {
+                InformationManager.DisplayMessage(
+                    new InformationMessage(
+                        $"Improved Garrisons: Menu injection failed: {ex.Message}",
+                        Colors.Red));
+            }
         }
 
         internal void OnPartySizeChanged(PartyBase party)
@@ -157,7 +167,24 @@ namespace ImprovedGarrisons
 
         internal static void ProcessSettlement(Settlement settlement, GarrisonSettings settings)
         {
-            settings?.Normalize();
+            if (settlement == null || settings == null) return;
+
+            try
+            {
+                ProcessSettlementCore(settlement, settings);
+            }
+            catch (Exception ex)
+            {
+                InformationManager.DisplayMessage(
+                    new InformationMessage(
+                        $"Improved Garrisons: Error processing {settlement.Name}: {ex.Message}",
+                        Colors.Red));
+            }
+        }
+
+        private static void ProcessSettlementCore(Settlement settlement, GarrisonSettings settings)
+        {
+            settings.Normalize();
 
             if (settings.AutoRecruitEnabled)
             {
